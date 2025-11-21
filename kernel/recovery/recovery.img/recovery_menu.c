@@ -1,66 +1,80 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <fcntl.h>
+#include <linux/input.h>
+#include <unistd.h>
 
-void do_wipe_data() {
-    printf("\n======================================\n");
-    printf("   Wipe data / Factory Reset\n");
-    printf("======================================\n");
+#define KEY_POWER 116
+#define KEY_VOLUMEDOWN 114
+#define KEY_VOLUMEUP 115
 
-    const char* options[] = {
-        "No",
-        "No",
-        "No",
-        "No",
-        "No",
-        "No",
-        "No",
-        "No",
-        "No",
-        "No",
-        "No",
-        "No",
-        "No",
-        "No",
-        "No",
-        "No",
-        "!!! YES — delete all user data !!!"
-    };
+// Função que abre o device de input
+int open_input_device() {
+    for (int i = 0; i < 10; i++) {
+        char path[32];
+        sprintf(path, "/dev/input/event%d", i);
 
-    int selection = 0;
-
-    while (1) {
-        printf("\nConfirme:\n");
-        for (int i = 0; i < 17; i++) {
-            if (i == selection)
-                printf(" ➜ %s\n", options[i]);
-            else
-                printf("   %s\n", options[i]);
+        int fd = open(path, O_RDONLY);
+        if (fd >= 0) {
+            printf("[RECOVERY] Usando %s\n", path);
+            return fd;
         }
+    }
+    return -1;
+}
 
-        printf("\nUse UP/DOWN e ENTER: ");
-        char c = getchar();
-        getchar(); // consume \n
+// Função que lê a tecla pressionada
+int read_key(int fd) {
+    struct input_event ev;
+    while (read(fd, &ev, sizeof(ev)) > 0) {
+        if (ev.type == EV_KEY && ev.value == 1) { // pressionado
+            return ev.code;
+        }
+    }
+    return -1;
+}
 
-        if (c == 'w' && selection > 0) selection--;
-        if (c == 's' && selection < 16) selection++;
-
-        if (c == '\n' || c == 'e') {
-            if (selection == 16) {
-                printf("\n*** INICIANDO WIPE REAL ***\n");
-
-
+// Função que efetivamente formata /data
 void wipe_data() {
-    printf("Wiping /data...\n");
+    printf("\n*** INICIANDO WIPE REAL ***\n");
 
     // desmonta /data
     system("umount /data");
 
-    // formata a partição inteira (igual Android faz)
+    // formata a partição inteira
     system("mke2fs -t ext4 /dev/block/mmcblk0p28");
 
     printf("Wipe completo.\n");
 }
-                printf("\n(wipe executado — aqui você coloca sua lógica)\n");
+
+// Função do menu de confirmação
+void do_wipe_data(int fd) {
+    const char* options[] = {
+        "No","No","No","No","No","No","No","No",
+        "No","No","No","No","No","No","No","No",
+        "!!! YES — delete all user data !!!"
+    };
+
+    int selection = 0;
+    int key;
+
+    while (1) {
+        printf("\nConfirme:\n");
+        for (int i = 0; i < 17; i++) {
+            if (i == selection) printf(" ➜ %s\n", options[i]);
+            else                printf("   %s\n", options[i]);
+        }
+
+        printf("\nVOL UP = cima | VOL DOWN = baixo | POWER = selecionar\n");
+
+        key = read_key(fd);
+
+        if (key == KEY_VOLUMEUP && selection > 0) selection--;
+        if (key == KEY_VOLUMEDOWN && selection < 16) selection++;
+
+        if (key == KEY_POWER) {
+            if (selection == 16) {
+                wipe_data();  // chama o wipe real
             } else {
                 printf("\nCancelado.\n");
             }
@@ -69,22 +83,46 @@ void wipe_data() {
     }
 }
 
+// Função do menu principal
 void start_recovery_menu() {
+    int fd = open_input_device();
+    if (fd < 0) {
+        printf("ERRO: Nenhum /dev/input/event encontrado!\n");
+        return;
+    }
+
+    int key;
+    int selection = 0;
+
+    const char* items[] = {
+        "Reboot system now",
+        "Wipe data / Factory reset",
+        "Wipe cache partition",
+        "Exit"
+    };
+
     while (1) {
         printf("\n======== DroidPureC Recovery ========\n");
-        printf("1. Reboot system now\n");
-        printf("2. Wipe data / Factory reset\n");
-        printf("3. Wipe cache\n");
-        printf("4. Exit\n");
-        printf("Escolha: ");
+        for (int i = 0; i < 4; i++) {
+            if (i == selection) printf(" ➜ %s\n", items[i]);
+            else                printf("   %s\n", items[i]);
+        }
 
-        int c = getchar();
-        getchar();
+        key = read_key(fd);
 
-        if (c == '1') printf("\n(Reboot)...\n");
-        else if (c == '2') do_wipe_data();
-        else if (c == '3') printf("\n(Wipe cache — placeholder)\n");
-        else if (c == '4') break;
+        if (key == KEY_VOLUMEUP && selection > 0) selection--;
+        if (key == KEY_VOLUMEDOWN && selection < 3) selection++;
+
+        if (key == KEY_POWER) {
+            if (selection == 0)
+                system("reboot"); // reboot real
+            else if (selection == 1)
+                do_wipe_data(fd); // chama menu de wipe
+            else if (selection == 2)
+                printf("\n(Wipe cache — placeholder)\n");
+            else if (selection == 3)
+                break;
+        }
     }
 }
 
