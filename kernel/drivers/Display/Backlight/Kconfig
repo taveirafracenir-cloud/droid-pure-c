@@ -1,0 +1,3 @@
+config BACKLIGHT
+    bool "Support backlight devices"
+    default y
