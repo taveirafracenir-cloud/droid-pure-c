@@ -1,13 +1,22 @@
-#define STACK_SIZE 4096
+BITS 64
 
-.section .bss
-stack: resb STACK_SIZE
-.section .bss
-stack: resb 4096
+%define STACK_SIZE 4096
+
+SECTION .bss
+stack:      resb STACK_SIZE
+stack_top:  equ stack + STACK_SIZE
+
+SECTION .text
+global _start
+
 %macro PUSH_ALL 0
     push rax
     push rbx
     push rcx
 %endmacro
 
-PUSH_ALL
+_start:
+    PUSH_ALL
+
+    ; Seu código aqui
+    jmp $
